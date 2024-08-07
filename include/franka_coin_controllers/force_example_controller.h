@@ -16,9 +16,9 @@
 #include <ros/time.h>
 #include <Eigen/Core>
 
-#include <franka_example_controllers/desired_mass_paramConfig.h>
+#include <franka_coin_controllers/desired_mass_paramConfig.h>
 
-namespace franka_example_controllers {
+namespace franka_coin_controllers {
 
 class ForceExampleController : public controller_interface::MultiInterfaceController<
                                    franka_hw::FrankaModelInterface,
@@ -51,11 +51,11 @@ class ForceExampleController : public controller_interface::MultiInterfaceContro
   static constexpr double kDeltaTauMax{1.0};
 
   // Dynamic reconfigure
-  std::unique_ptr<dynamic_reconfigure::Server<franka_example_controllers::desired_mass_paramConfig>>
+  std::unique_ptr<dynamic_reconfigure::Server<franka_coin_controllers::desired_mass_paramConfig>>
       dynamic_server_desired_mass_param_;
   ros::NodeHandle dynamic_reconfigure_desired_mass_param_node_;
-  void desiredMassParamCallback(franka_example_controllers::desired_mass_paramConfig& config,
+  void desiredMassParamCallback(franka_coin_controllers::desired_mass_paramConfig& config,
                                 uint32_t level);
 };
 
-}  // namespace franka_example_controllers
+}  // namespace franka_coin_controllers

@@ -1,6 +1,6 @@
 // Copyright (c) 2023 Franka Robotics GmbH
 // Use of this source code is governed by the Apache-2.0 license, see LICENSE
-#include <franka_example_controllers/cartesian_pose_example_controller.h>
+#include <franka_coin_controllers/cartesian_pose_example_controller.h>
 
 #include <cmath>
 #include <memory>
@@ -13,7 +13,7 @@
 #include <pluginlib/class_list_macros.h>
 #include <ros/ros.h>
 
-namespace franka_example_controllers {
+namespace franka_coin_controllers {
 
 bool CartesianPoseExampleController::init(hardware_interface::RobotHW* robot_hardware,
                                           ros::NodeHandle& node_handle) {
@@ -54,7 +54,7 @@ bool CartesianPoseExampleController::init(hardware_interface::RobotHW* robot_har
       if (std::abs(state_handle.getRobotState().q_d[i] - q_start[i]) > 0.1) {
         ROS_ERROR_STREAM(
             "CartesianPoseExampleController: Robot is not in the expected starting position for "
-            "running this example. Run `roslaunch franka_example_controllers move_to_start.launch "
+            "running this example. Run `roslaunch franka_coin_controllers move_to_start.launch "
             "robot_ip:=<robot-ip> load_gripper:=<has-attached-gripper>` first.");
         return false;
       }
@@ -87,7 +87,7 @@ void CartesianPoseExampleController::update(const ros::Time& /* time */,
   cartesian_pose_handle_->setCommand(new_pose);
 }
 
-}  // namespace franka_example_controllers
+}  // namespace franka_coin_controllers
 
-PLUGINLIB_EXPORT_CLASS(franka_example_controllers::CartesianPoseExampleController,
+PLUGINLIB_EXPORT_CLASS(franka_coin_controllers::CartesianPoseExampleController,
                        controller_interface::ControllerBase)

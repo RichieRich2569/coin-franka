@@ -1,6 +1,6 @@
 // Copyright (c) 2023 Franka Robotics GmbH
 // Use of this source code is governed by the Apache-2.0 license, see LICENSE
-#include <franka_example_controllers/cartesian_velocity_example_controller.h>
+#include <franka_coin_controllers/cartesian_velocity_example_controller.h>
 
 #include <array>
 #include <cmath>
@@ -13,7 +13,7 @@
 #include <pluginlib/class_list_macros.h>
 #include <ros/ros.h>
 
-namespace franka_example_controllers {
+namespace franka_coin_controllers {
 
 bool CartesianVelocityExampleController::init(hardware_interface::RobotHW* robot_hardware,
                                               ros::NodeHandle& node_handle) {
@@ -54,7 +54,7 @@ bool CartesianVelocityExampleController::init(hardware_interface::RobotHW* robot
       if (std::abs(state_handle.getRobotState().q_d[i] - q_start[i]) > 0.1) {
         ROS_ERROR_STREAM(
             "CartesianVelocityExampleController: Robot is not in the expected starting position "
-            "for running this example. Run `roslaunch franka_example_controllers "
+            "for running this example. Run `roslaunch franka_coin_controllers "
             "move_to_start.launch robot_ip:=<robot-ip> load_gripper:=<has-attached-gripper>` "
             "first.");
         return false;
@@ -95,7 +95,7 @@ void CartesianVelocityExampleController::stopping(const ros::Time& /*time*/) {
   // BUILT-IN STOPPING BEHAVIOR SLOW DOWN THE ROBOT.
 }
 
-}  // namespace franka_example_controllers
+}  // namespace franka_coin_controllers
 
-PLUGINLIB_EXPORT_CLASS(franka_example_controllers::CartesianVelocityExampleController,
+PLUGINLIB_EXPORT_CLASS(franka_coin_controllers::CartesianVelocityExampleController,
                        controller_interface::ControllerBase)

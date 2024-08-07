@@ -14,9 +14,9 @@
 
 #include <franka_hw/franka_cartesian_command_interface.h>
 
-namespace franka_example_controllers {
+namespace franka_coin_controllers {
 
-class ElbowExampleController
+class CartesianPoseExampleController
     : public controller_interface::MultiInterfaceController<franka_hw::FrankaPoseCartesianInterface,
                                                             franka_hw::FrankaStateInterface> {
  public:
@@ -29,7 +29,6 @@ class ElbowExampleController
   std::unique_ptr<franka_hw::FrankaCartesianPoseHandle> cartesian_pose_handle_;
   ros::Duration elapsed_time_;
   std::array<double, 16> initial_pose_{};
-  std::array<double, 2> initial_elbow_{};
 };
 
-}  // namespace franka_example_controllers
+}  // namespace franka_coin_controllers

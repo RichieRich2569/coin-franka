@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.4)
-project(franka_example_controllers)
+project(franka_coin_controllers)
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_STANDARD 14)
@@ -43,14 +43,11 @@ generate_messages()
 generate_dynamic_reconfigure_options(
   cfg/compliance_param.cfg
   cfg/desired_mass_param.cfg
-  cfg/dual_arm_compliance_param.cfg
-  cfg/teleop_param.cfg
-  cfg/teleop_gripper_param.cfg
 )
 
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES franka_example_controllers
+  LIBRARIES franka_coin_controllers
   CATKIN_DEPENDS
     controller_interface
     dynamic_reconfigure
@@ -71,22 +68,14 @@ catkin_package(
   DEPENDS Franka
 )
 
-add_library(franka_example_controllers
-  src/elbow_example_controller.cpp
+add_library(franka_coin_controllers
   src/cartesian_pose_example_controller.cpp
   src/cartesian_velocity_example_controller.cpp
-  src/joint_position_example_controller.cpp
-  src/joint_velocity_example_controller.cpp
-  src/model_example_controller.cpp
-  src/joint_impedance_example_controller.cpp
   src/cartesian_impedance_example_controller.cpp
   src/force_example_controller.cpp
-  src/dual_arm_cartesian_impedance_example_controller.cpp
-  src/teleop_joint_pd_example_controller.cpp
-  src/joint_wall.cpp
 )
 
-add_dependencies(franka_example_controllers
+add_dependencies(franka_coin_controllers
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
   ${PROJECT_NAME}_generate_messages_cpp
@@ -94,39 +83,21 @@ add_dependencies(franka_example_controllers
   ${PROJECT_NAME}_gencfg
 )
 
-target_link_libraries(franka_example_controllers PUBLIC
+target_link_libraries(franka_coin_controllers PUBLIC
   ${Franka_LIBRARIES}
   ${catkin_LIBRARIES}
 )
 
-target_include_directories(franka_example_controllers SYSTEM PUBLIC
+target_include_directories(franka_coin_controllers SYSTEM PUBLIC
   ${EIGEN3_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
 )
-target_include_directories(franka_example_controllers PUBLIC
+target_include_directories(franka_coin_controllers PUBLIC
   include
 )
 
-add_executable(teleop_gripper_node
-  src/teleop_gripper_node.cpp
-)
-target_include_directories(teleop_gripper_node PUBLIC
-  ${catkin_INCLUDE_DIRS}
-)
-target_link_libraries(teleop_gripper_node PUBLIC
-  ${Franka_LIBRARIES}
-  ${catkin_LIBRARIES}
-)
-add_dependencies(teleop_gripper_node
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-  ${PROJECT_NAME}_generate_messages_cpp
-  ${PROJECT_NAME}_gencpp
-  ${PROJECT_NAME}_gencfg
-)
-
 ## Installation
-install(TARGETS franka_example_controllers
+install(TARGETS franka_coin_controllers
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -140,11 +111,11 @@ install(DIRECTORY launch
 install(DIRECTORY config
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
-install(FILES franka_example_controllers_plugin.xml
+install(FILES franka_coin_controllers_plugin.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 catkin_install_python(
-  PROGRAMS scripts/interactive_marker.py scripts/move_to_start.py scripts/dual_arm_interactive_marker.py
+  PROGRAMS scripts/move_to_start.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
@@ -158,10 +129,10 @@ if(CLANG_TOOLS)
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
   )
-  add_format_target(franka_example_controllers FILES ${SOURCES} ${HEADERS})
-  add_tidy_target(franka_example_controllers
+  add_format_target(franka_coin_controllers FILES ${SOURCES} ${HEADERS})
+  add_tidy_target(franka_coin_controllers
     FILES ${SOURCES}
-    DEPENDS franka_example_controllers
+    DEPENDS franka_coin_controllers
   )
 endif()
 

@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>franka_example_controllers</name>
-  <version>0.10.1</version>
-  <description>franka_example_controllers provides example code for controlling Franka Robotics research robots with ros_control</description>
-  <maintainer email="support@franka.de">Franka Robotics GmbH</maintainer>
+  <name>franka_coin_controllers</name>
+  <version>0.0.1</version>
+  <description>franka_coin_controllers provides COIN control for controlling Franka Robotics, adapted from Franka Example Code</description>
+  <maintainer email="rm967@cam.ac.uk">Richard Marques Monteiro</maintainer>
   <license>Apache 2.0</license>
 
-  <url type="website">http://wiki.ros.org/franka_example_controllers</url>
+  <url type="website">http://wiki.ros.org/franka_coin_controllers</url>
   <url type="repository">https://github.com/frankaemika/franka_ros</url>
   <url type="bugtracker">https://github.com/frankaemika/franka_ros/issues</url>
   <author>Franka Robotics GmbH</author>
@@ -41,6 +41,6 @@
   <exec_depend>rospy</exec_depend>
 
   <export>
-    <controller_interface plugin="${prefix}/franka_example_controllers_plugin.xml" />
+    <controller_interface plugin="${prefix}/franka_coin_controllers_plugin.xml" />
   </export>
 </package>

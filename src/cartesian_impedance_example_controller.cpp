@@ -1,6 +1,6 @@
 // Copyright (c) 2023 Franka Robotics GmbH
 // Use of this source code is governed by the Apache-2.0 license, see LICENSE
-#include <franka_example_controllers/cartesian_impedance_example_controller.h>
+#include <franka_coin_controllers/cartesian_impedance_example_controller.h>
 
 #include <cmath>
 #include <memory>
@@ -10,9 +10,9 @@
 #include <pluginlib/class_list_macros.h>
 #include <ros/ros.h>
 
-#include <franka_example_controllers/pseudo_inversion.h>
+#include <franka_coin_controllers/pseudo_inversion.h>
 
-namespace franka_example_controllers {
+namespace franka_coin_controllers {
 
 bool CartesianImpedanceExampleController::init(hardware_interface::RobotHW* robot_hw,
                                                ros::NodeHandle& node_handle) {
@@ -88,7 +88,7 @@ bool CartesianImpedanceExampleController::init(hardware_interface::RobotHW* robo
       ros::NodeHandle(node_handle.getNamespace() + "/dynamic_reconfigure_compliance_param_node");
 
   dynamic_server_compliance_param_ = std::make_unique<
-      dynamic_reconfigure::Server<franka_example_controllers::compliance_paramConfig>>(
+      dynamic_reconfigure::Server<franka_coin_controllers::compliance_paramConfig>>(
 
       dynamic_reconfigure_compliance_param_node_);
   dynamic_server_compliance_param_->setCallback(
@@ -212,7 +212,7 @@ Eigen::Matrix<double, 7, 1> CartesianImpedanceExampleController::saturateTorqueR
 }
 
 void CartesianImpedanceExampleController::complianceParamCallback(
-    franka_example_controllers::compliance_paramConfig& config,
+    franka_coin_controllers::compliance_paramConfig& config,
     uint32_t /*level*/) {
   cartesian_stiffness_target_.setIdentity();
   cartesian_stiffness_target_.topLeftCorner(3, 3)
@@ -241,7 +241,7 @@ void CartesianImpedanceExampleController::equilibriumPoseCallback(
   }
 }
 
-}  // namespace franka_example_controllers
+}  // namespace franka_coin_controllers
 
-PLUGINLIB_EXPORT_CLASS(franka_example_controllers::CartesianImpedanceExampleController,
+PLUGINLIB_EXPORT_CLASS(franka_coin_controllers::CartesianImpedanceExampleController,
                        controller_interface::ControllerBase)

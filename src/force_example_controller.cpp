@@ -1,6 +1,6 @@
 // Copyright (c) 2023 Franka Robotics GmbH
 // Use of this source code is governed by the Apache-2.0 license, see LICENSE
-#include <franka_example_controllers/force_example_controller.h>
+#include <franka_coin_controllers/force_example_controller.h>
 
 #include <cmath>
 #include <memory>
@@ -11,7 +11,7 @@
 
 #include <franka/robot_state.h>
 
-namespace franka_example_controllers {
+namespace franka_coin_controllers {
 
 bool ForceExampleController::init(hardware_interface::RobotHW* robot_hw,
                                   ros::NodeHandle& node_handle) {
@@ -76,7 +76,7 @@ bool ForceExampleController::init(hardware_interface::RobotHW* robot_hw,
   dynamic_reconfigure_desired_mass_param_node_ =
       ros::NodeHandle("dynamic_reconfigure_desired_mass_param_node");
   dynamic_server_desired_mass_param_ = std::make_unique<
-      dynamic_reconfigure::Server<franka_example_controllers::desired_mass_paramConfig>>(
+      dynamic_reconfigure::Server<franka_coin_controllers::desired_mass_paramConfig>>(
 
       dynamic_reconfigure_desired_mass_param_node_);
   dynamic_server_desired_mass_param_->setCallback(
@@ -128,7 +128,7 @@ void ForceExampleController::update(const ros::Time& /*time*/, const ros::Durati
 }
 
 void ForceExampleController::desiredMassParamCallback(
-    franka_example_controllers::desired_mass_paramConfig& config,
+    franka_coin_controllers::desired_mass_paramConfig& config,
     uint32_t /*level*/) {
   target_mass_ = config.desired_mass;
   target_k_p_ = config.k_p;
@@ -146,7 +146,7 @@ Eigen::Matrix<double, 7, 1> ForceExampleController::saturateTorqueRate(
   return tau_d_saturated;
 }
 
-}  // namespace franka_example_controllers
+}  // namespace franka_coin_controllers
 
-PLUGINLIB_EXPORT_CLASS(franka_example_controllers::ForceExampleController,
+PLUGINLIB_EXPORT_CLASS(franka_coin_controllers::ForceExampleController,
                        controller_interface::ControllerBase)
