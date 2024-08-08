@@ -73,6 +73,7 @@ add_library(franka_coin_controllers
   src/cartesian_velocity_example_controller.cpp
   src/cartesian_impedance_example_controller.cpp
   src/force_example_controller.cpp
+  src/lqr_step_controller.cpp
 )
 
 add_dependencies(franka_coin_controllers
@@ -115,7 +116,7 @@ install(FILES franka_coin_controllers_plugin.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 catkin_install_python(
-  PROGRAMS scripts/move_to_start.py
+  PROGRAMS scripts/move_to_start.py scripts/coin_move_to_start.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

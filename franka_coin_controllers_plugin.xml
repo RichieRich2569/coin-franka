@@ -19,4 +19,9 @@
       A PI controller that applies a force corresponding to a user-provided desired mass in the z axis. The desired mass value can be modified online with dynamic reconfigure.
     </description>
   </class>
+  <class name="franka_coin_controllers/LQRStepController" type="franka_coin_controllers::LQRStepController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      A basic LQR optimal controller that applies a force to move the robot in a straight line to its goal, as given by a step reference target.
+    </description>
+  </class>
 </library>
