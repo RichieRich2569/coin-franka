@@ -116,7 +116,7 @@ install(FILES franka_coin_controllers_plugin.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 catkin_install_python(
-  PROGRAMS scripts/move_to_start.py scripts/coin_move_to_start.py
+  PROGRAMS scripts/move_to_start.py scripts/coin_move_to_start.py scripts/interactive_marker.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
