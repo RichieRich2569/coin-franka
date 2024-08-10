@@ -132,6 +132,10 @@ void LQRStepController::update(const ros::Time& /* time */,
   state_k_(5) = position_k(0) - 1.0;
 
   // calculate LQR gain
+  // Define A, B, Q, R
+  // Eigen::MatrixXd P = Eigen::MatrixXd::Zero(6, 6);
+  // solveRicattiD(A,B,Q,R,P);
+  // Eigen::Matrix<double, 4, 6> K =  (R.inverse() * B.transpose() * P);
 
   // Find appropriate velocities
 
@@ -150,6 +154,35 @@ void LQRStepController::stopping(const ros::Time& /*time*/) {
   // WARNING: DO NOT SEND ZERO VELOCITIES HERE AS IN CASE OF ABORTING DURING MOTION
   // A JUMP TO ZERO WILL BE COMMANDED PUTTING HIGH LOADS ON THE ROBOT. LET THE DEFAULT
   // BUILT-IN STOPPING BEHAVIOR SLOW DOWN THE ROBOT.
+}
+
+bool solveRicattiD(const Eigen::MatrixXd &Ad,
+                            const Eigen::MatrixXd &Bd, const Eigen::MatrixXd &Q,
+                            const Eigen::MatrixXd &R, Eigen::MatrixXd &P,
+                            const double &tolerance = 1.E-5,
+                            const int iter_max = 100000) {
+  P = Q; // initialize
+
+  Eigen::MatrixXd P_next;
+
+  Eigen::MatrixXd AdT = Ad.transpose();
+  Eigen::MatrixXd BdT = Bd.transpose();
+  Eigen::MatrixXd Rinv = R.inverse();
+
+  double diff;
+  for (int i = 0; i < iter_max; ++i) {
+    // -- discrete solver --
+    P_next = AdT * P * Ad -
+             AdT * P * Bd * (R + BdT * P * Bd).inverse() * BdT * P * Ad + Q;
+
+    diff = fabs((P_next - P).maxCoeff());
+    P = P_next;
+    if (diff < tolerance) {
+      // std::cout << "iteration mumber = " << i << std::endl;
+      return true;
+    }
+  }
+  return false; // over iteration limit
 }
 
 }  // namespace franka_coin_controllers
