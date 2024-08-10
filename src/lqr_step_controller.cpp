@@ -82,6 +82,29 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
     return false;
   }
 
+  // Define state space matrices A, B (continuous) and LQR Q and R
+  A_ << 0, 0, 1, 0, 0, 0,
+        0, 0, 0, 1, 0, 0,
+        0, 0, 0, -15, 0, 0,
+        0, 0, 15, 0, 0, 0,
+        1, 0, 0, 0, 0, 0,
+        0, 1, 0, 0, 0, 0;
+
+  B_ << 0, 0, 0, 0,
+        0, 0, 0, 0,
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, -1, 0,
+        0, 0, 0, -1;
+
+  Eigen::Matrix<double, 6, 1> q ;
+  q << 1, 4, 0.01, 0.01, 4, 4;
+  Q_ << q.array().sqrt().matrix().asDiagonal();
+
+  Eigen::Matrix<double, 4, 1> r ;
+  r << 0.01, 0.01, 1, 1;
+  R_ << r.array().sqrt().matrix().asDiagonal();
+
   state_k_.setZero();
 
   return true;
@@ -131,14 +154,23 @@ void LQRStepController::update(const ros::Time& /* time */,
   state_k_(4) = state_k_(4) + (position_k(0) - 1.0)*period; // Track reference of 1
   state_k_(5) = position_k(0) - 1.0;
 
-  // calculate LQR gain
-  // Define A, B, Q, R
-  // Eigen::MatrixXd P = Eigen::MatrixXd::Zero(6, 6);
-  // solveRicattiD(A,B,Q,R,P);
-  // Eigen::Matrix<double, 4, 6> K =  (R.inverse() * B.transpose() * P);
+  // Find discrete matrices - depending on period
+  Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6 >::Identity(6,6) + A_*period;
+  Eigen::Matrix<double, 6, 4> B = B_*period;
+
+  // Calculate LQR gain
+  Eigen::Matrix<double, 6, 6> P = Eigen::Matrix<double, 6, 6>::Zero();
+  solveRicattiD(A,B,Q_,R_,P);
+  Eigen::Matrix<double, 4, 6> K =  (R_.inverse() * B_.transpose() * P);
+  K.bottomRows(2).setZero();
 
   // Find appropriate velocities
+  Eigen::Matrix<double, 4, 1> u_k = K * x_;
+  u_k(2) = 1; // Set reference
+  Eigen::Matrix<double, 6, 1> state_new = A*state_k_ + B*u_k;
 
+  // For now just output given velocities - Adapt this in the command below
+  std::cout << "vx: " << state_new(2) << " m/s, vy: " << state_new(3) << " m/s." << std::endl;
 
   double angle = M_PI / 4.0;
   double cycle = std::floor(
@@ -156,11 +188,11 @@ void LQRStepController::stopping(const ros::Time& /*time*/) {
   // BUILT-IN STOPPING BEHAVIOR SLOW DOWN THE ROBOT.
 }
 
-bool solveRicattiD(const Eigen::MatrixXd &Ad,
+bool LQRStepController::solveRicattiD(const Eigen::MatrixXd &Ad,
                             const Eigen::MatrixXd &Bd, const Eigen::MatrixXd &Q,
                             const Eigen::MatrixXd &R, Eigen::MatrixXd &P,
-                            const double &tolerance = 1.E-5,
-                            const int iter_max = 100000) {
+                            const double &tolerance,
+                            const int iter_max) {
   P = Q; // initialize
 
   Eigen::MatrixXd P_next;
