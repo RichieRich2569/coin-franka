@@ -40,7 +40,7 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
     return false;
   }
 
-  auto* model_interface = robot_hw->get<franka_hw::FrankaModelInterface>();
+  auto* model_interface = robot_hardware->get<franka_hw::FrankaModelInterface>();
   if (model_interface == nullptr) {
     ROS_ERROR_STREAM(
         "LQRStepController: Error getting model interface from hardware");
@@ -63,11 +63,12 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
   }
 
   try {
-    state_handle_ = state_interface->getHandle(arm_id + "_robot");
+    state_handle_ = std::make_unique<franka_hw::FrankaStateHandle>(
+        state_interface->getHandle(arm_id + "_robot"));
 
     std::array<double, 7> q_start{{0, 0, 0, -7 * M_PI_4 / 2, 0, 7 * M_PI_4 / 2, 0}};
     for (size_t i = 0; i < q_start.size(); i++) {
-      if (std::abs(state_handle_.getRobotState().q_d[i] - q_start[i]) > 0.1) {
+      if (std::abs(state_handle_->getRobotState().q_d[i] - q_start[i]) > 0.1) {
         ROS_ERROR_STREAM(
             "LQRStepController: Robot is not in the expected starting position "
             "for running this example. Run `roslaunch franka_coin_controllers "
@@ -97,13 +98,13 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
         0, 0, -1, 0,
         0, 0, 0, -1;
 
-  Eigen::Matrix<double, 6, 1> q ;
+  Eigen::VectorXd q(6) ;
   q << 1, 4, 0.01, 0.01, 4, 4;
-  Q_ << q.array().sqrt().matrix().asDiagonal();
+  Q_ = q.array().sqrt().matrix().asDiagonal();
 
-  Eigen::Matrix<double, 4, 1> r ;
+  Eigen::VectorXd r(4) ;
   r << 0.01, 0.01, 1, 1;
-  R_ << r.array().sqrt().matrix().asDiagonal();
+  R_ = r.array().sqrt().matrix().asDiagonal();
 
   state_k_.setZero();
 
@@ -114,12 +115,12 @@ void LQRStepController::starting(const ros::Time& /* time */) {
   elapsed_time_ = ros::Duration(0.0);
   franka::RobotState initial_state = state_handle_->getRobotState();
   std::array<double, 42> jacobian_array =
-      model_handle_->getZeroJacobian(franka::Frame::kEndEffector)
+      model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
 
   // convert to eigen
   Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
   Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data());
-  Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(robot_state.dq.data());
+  Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(initial_state.dq.data());
 
   // get initial state
   Eigen::Vector3d position_k = initial_transform.translation();
@@ -133,17 +134,18 @@ void LQRStepController::starting(const ros::Time& /* time */) {
 void LQRStepController::update(const ros::Time& /* time */,
                                                 const ros::Duration& period) {
   elapsed_time_ += period;
-  franka::RobotState initial_state = state_handle_->getRobotState();
+  franka::RobotState robot_state = state_handle_->getRobotState();
   std::array<double, 42> jacobian_array =
-      model_handle_->getZeroJacobian(franka::Frame::kEndEffector)
+      model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
 
   // convert to eigen
-  Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
+  Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
   Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data());
   Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(robot_state.dq.data());
 
   double time_max = 5.0;
   double v_max = 0.5; // Limit for Panda is 1.7 m/s
+  double dt = period.toSec();
 
   // get new state
   Eigen::Vector3d position_k = initial_transform.translation();
@@ -151,34 +153,35 @@ void LQRStepController::update(const ros::Time& /* time */,
 
   state_k_.segment<2>(0) = position_k.head<2>();
   state_k_.segment<2>(2) = velocity_k.head<2>();
-  state_k_(4) = state_k_(4) + (position_k(0) - 1.0)*period; // Track reference of 1
+  state_k_(4) = state_k_(4) + (position_k(0) - 1.0)*dt; // Track reference of 1
   state_k_(5) = position_k(0) - 1.0;
 
   // Find discrete matrices - depending on period
-  Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6 >::Identity(6,6) + A_*period;
-  Eigen::Matrix<double, 6, 4> B = B_*period;
+  Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6 >::Identity(6,6) + A_*dt;
+  Eigen::Matrix<double, 6, 4> B = B_*dt;
 
   // Calculate LQR gain
-  Eigen::Matrix<double, 6, 6> P = Eigen::Matrix<double, 6, 6>::Zero();
+  Eigen::MatrixXd P = Eigen::Matrix<double, 6, 6>::Zero();
   solveRicattiD(A,B,Q_,R_,P);
   Eigen::Matrix<double, 4, 6> K =  (R_.inverse() * B_.transpose() * P);
   K.bottomRows(2).setZero();
 
   // Find appropriate velocities
-  Eigen::Matrix<double, 4, 1> u_k = K * x_;
+  Eigen::Matrix<double, 4, 1> u_k = K * state_k_;
   u_k(2) = 1; // Set reference
   Eigen::Matrix<double, 6, 1> state_new = A*state_k_ + B*u_k;
 
   // For now just output given velocities - Adapt this in the command below
-  std::cout << "vx: " << state_new(2) << " m/s, vy: " << state_new(3) << " m/s." << std::endl;
+  // std::cout << "vx: " << state_new(2) << " m/s, vy: " << state_new(3) << " m/s." << std::endl;
+  double v_x = std::min(state_new(2),v_max);
+  double v_y = std::min(state_new(3),v_max);
 
-  double angle = M_PI / 4.0;
-  double cycle = std::floor(
-      pow(-1.0, (elapsed_time_.toSec() - std::fmod(elapsed_time_.toSec(), time_max)) / time_max));
-  double v = cycle * v_max / 2.0 * (1.0 - std::cos(2.0 * M_PI / time_max * elapsed_time_.toSec()));
-  double v_x = std::cos(angle) * v;
-  double v_z = -std::sin(angle) * v;
-  std::array<double, 6> command = {{v_x, 0.0, v_z, 0.0, 0.0, 0.0}};
+  std::cout << (K.array() * 1000).round() / 1000 << std::endl;
+  std::cout << " " << std::endl;
+
+  // Problem right now is that commanded v_x, v_y change too much. Not due to state variation. -- Problem is large variation in K matrix.
+
+  std::array<double, 6> command = {{v_x, v_y, 0.0, 0.0, 0.0, 0.0}};
   velocity_cartesian_handle_->setCommand(command);
 }
 

@@ -3,7 +3,7 @@ cartesian_pose_example_controller:
     arm_id: $(arg arm_id)
 
 lqr_step_controller:
-    type: franka_coin_controllers/CartesianVelocityExampleController
+    type: franka_coin_controllers/LQRStepController
     arm_id: $(arg arm_id)
 
 cartesian_velocity_example_controller:
