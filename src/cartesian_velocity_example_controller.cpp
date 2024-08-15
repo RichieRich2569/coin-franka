@@ -85,6 +85,7 @@ void CartesianVelocityExampleController::update(const ros::Time& /* time */,
   double v = cycle * v_max / 2.0 * (1.0 - std::cos(2.0 * M_PI / time_max * elapsed_time_.toSec()));
   double v_x = std::cos(angle) * v;
   double v_z = -std::sin(angle) * v;
+
   std::array<double, 6> command = {{v_x, 0.0, v_z, 0.0, 0.0, 0.0}};
   velocity_cartesian_handle_->setCommand(command);
 }

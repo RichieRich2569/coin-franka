@@ -106,7 +106,14 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
   r << 0.01, 0.01, 1, 1;
   R_ = r.array().sqrt().matrix().asDiagonal();
 
+  state_init_.setZero();
   state_k_.setZero();
+  K_.setZero();
+
+  K_ << 0.1136, 1.4062, 1.2142, -0.0168, 0.0085, 0.0597,
+       -1.4062, 0.1136, 0.0168, 1.2142, -0.0597, 0.0085,
+       0, 0, 0, 0, 0, 0,
+       0, 0, 0, 0, 0, 0; 
 
   return true;
 }
@@ -126,60 +133,74 @@ void LQRStepController::starting(const ros::Time& /* time */) {
   Eigen::Vector3d position_k = initial_transform.translation();
   Eigen::Matrix<double, 6, 1> velocity_k = jacobian * dq;
 
-  state_k_.segment<2>(0) = position_k.head<2>();
-  state_k_.segment<2>(2) = velocity_k.head<2>();
+  state_init_.segment<2>(0) = position_k.head<2>();
+  state_init_.segment<2>(2) = velocity_k.head<2>();
+
+  // Find discrete matrices - depending on period
+  // double dt = 0.001; // Period yet unknown, but on average from 1 KHz communication.
+  // Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6 >::Identity(6,6) + A_*dt;
+  // Eigen::Matrix<double, 6, 4> B = B_*dt;
+
+  // Calculate LQR gain
+  // Eigen::MatrixXd P = Eigen::Matrix<double, 6, 6>::Zero();
+  // solveRicattiD(A,B,Q_,R_,P);
+  // K_ =  (R_.inverse() * B_.transpose() * P);
+  // K_.bottomRows(2).setZero();
 
 }
 
 void LQRStepController::update(const ros::Time& /* time */,
                                                 const ros::Duration& period) {
   elapsed_time_ += period;
-  franka::RobotState robot_state = state_handle_->getRobotState();
-  std::array<double, 42> jacobian_array =
-      model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
+  //franka::RobotState robot_state = state_handle_->getRobotState();
+  //std::array<double, 42> jacobian_array =
+  //    model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
 
   // convert to eigen
-  Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
-  Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data());
-  Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(robot_state.dq.data());
+  // Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
+  // Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data());
+  // Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(robot_state.dq.data());
 
   double time_max = 5.0;
   double v_max = 0.5; // Limit for Panda is 1.7 m/s
   double dt = period.toSec();
 
   // get new state
-  Eigen::Vector3d position_k = initial_transform.translation();
-  Eigen::Matrix<double, 6, 1> velocity_k = jacobian * dq;
+  // Eigen::Vector3d position_k = initial_transform.translation();
+  // Eigen::Matrix<double, 6, 1> velocity_k = jacobian * dq;
 
-  state_k_.segment<2>(0) = position_k.head<2>();
-  state_k_.segment<2>(2) = velocity_k.head<2>();
-  state_k_(4) = state_k_(4) + (position_k(0) - 1.0)*dt; // Track reference of 1
-  state_k_(5) = position_k(0) - 1.0;
+  // state_k_.segment<2>(0) = position_k.head<2>();
+  // state_k_.segment<2>(2) = velocity_k.head<2>();
 
   // Find discrete matrices - depending on period
   Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6 >::Identity(6,6) + A_*dt;
   Eigen::Matrix<double, 6, 4> B = B_*dt;
 
-  // Calculate LQR gain
-  Eigen::MatrixXd P = Eigen::Matrix<double, 6, 6>::Zero();
-  solveRicattiD(A,B,Q_,R_,P);
-  Eigen::Matrix<double, 4, 6> K =  (R_.inverse() * B_.transpose() * P);
-  K.bottomRows(2).setZero();
-
   // Find appropriate velocities
-  Eigen::Matrix<double, 4, 1> u_k = K * state_k_;
+  Eigen::Matrix<double, 4, 1> u_k = K_ * state_k_;
   u_k(2) = 1; // Set reference
   Eigen::Matrix<double, 6, 1> state_new = A*state_k_ + B*u_k;
 
+  // Update integral states
+  state_k_(4) += (state_k_(0) - 1.0)*dt; // Track reference of 1
+  state_k_(5) += (state_k_(1))*dt;
+
+  // Velocity can only be changed by a maximum amount
+  state_new(2) = std::min(std::max(state_new(2), -v_max), v_max);
+  state_new(3) = std::min(std::max(state_new(3), -v_max), v_max);
+  // state_new = state_k_ + (state_new - state_k_)*0.0001;
+
   // For now just output given velocities - Adapt this in the command below
-  // std::cout << "vx: " << state_new(2) << " m/s, vy: " << state_new(3) << " m/s." << std::endl;
-  double v_x = std::min(state_new(2),v_max);
-  double v_y = std::min(state_new(3),v_max);
+  if (elapsed_time_.toSec() < 1000) {
+    // std::cout << "vx: " << round(1000*state_new(2))/1000 << " m/s, vy: " << round(1000*state_new(3))/1000 << " m/s." << std::endl;
+    // std::cout << "delta v: " << sqrt(pow(state_new(0)-state_k_(0),2) + pow(state_new(1)-state_k_(1),2)) << std::endl;
+    std::cout << "x: " << round(1000*state_new(0))/1000 << " m, y: " << round(1000*state_new(1))/1000 << " m" << std::endl;
+    // std::cout << "accel: " << sqrt(pow(state_new(0)-state_k_(0),2) + pow(state_new(1)-state_k_(1),2))/dt << std::endl;
+  }
 
-  std::cout << (K.array() * 1000).round() / 1000 << std::endl;
-  std::cout << " " << std::endl;
-
-  // Problem right now is that commanded v_x, v_y change too much. Not due to state variation. -- Problem is large variation in K matrix.
+  double v_x = state_new(2);
+  double v_y = state_new(3);
+  state_k_ = state_new;
 
   std::array<double, 6> command = {{v_x, v_y, 0.0, 0.0, 0.0, 0.0}};
   velocity_cartesian_handle_->setCommand(command);
