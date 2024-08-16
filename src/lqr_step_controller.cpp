@@ -177,13 +177,9 @@ void LQRStepController::update(const ros::Time& /* time */,
   Eigen::Matrix<double, 6, 4> B = B_*dt;
 
   // Find appropriate velocities
-  Eigen::Matrix<double, 4, 1> u_k = K_ * state_k_;
+  Eigen::Matrix<double, 4, 1> u_k = - K_ * state_k_;
   u_k(2) = 1; // Set reference
   Eigen::Matrix<double, 6, 1> state_new = A*state_k_ + B*u_k;
-
-  // Update integral states
-  state_k_(4) += (state_k_(0) - 1.0)*dt; // Track reference of 1
-  state_k_(5) += (state_k_(1))*dt;
 
   // Velocity can only be changed by a maximum amount
   state_new(2) = std::min(std::max(state_new(2), -v_max), v_max);
