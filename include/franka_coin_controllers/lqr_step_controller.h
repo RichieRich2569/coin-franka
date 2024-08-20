@@ -41,7 +41,7 @@ class LQRStepController : public controller_interface::MultiInterfaceController<
   ros::Duration elapsed_time_;
 
   Eigen::Matrix<double, 6, 1> state_k_; // Current state vector for LQR controller with Integral Control
-  Eigen::Matrix<double, 6, 1> state_init_; // Initial State Vector - To remove bias
+  Eigen::Vector3d pos_init_; // Initial Position Vector - To remove bias
   Eigen::Matrix<double, 6, 6> A_; // Matrix A in state-space
   Eigen::Matrix<double, 6, 4> B_; // Matrix B in state-space
   Eigen::Matrix<double, 6, 6> Q_; // Matrix Q in LQR design
