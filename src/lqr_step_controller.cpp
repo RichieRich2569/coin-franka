@@ -106,7 +106,7 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
   r << 0.01, 0.01, 1, 1;
   R_ = r.array().sqrt().matrix().asDiagonal();
 
-  state_init_.setZero();
+  pos_init_.setZero();
   state_k_.setZero();
   K_.setZero();
 
@@ -130,11 +130,7 @@ void LQRStepController::starting(const ros::Time& /* time */) {
   Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(initial_state.dq.data());
 
   // get initial state
-  Eigen::Vector3d position_k = initial_transform.translation();
-  Eigen::Matrix<double, 6, 1> velocity_k = jacobian * dq;
-
-  state_init_.segment<2>(0) = position_k.head<2>();
-  state_init_.segment<2>(2) = velocity_k.head<2>();
+  pos_init_ = initial_transform.translation();
 
   // Find discrete matrices - depending on period
   // double dt = 0.001; // Period yet unknown, but on average from 1 KHz communication.
@@ -165,12 +161,21 @@ void LQRStepController::update(const ros::Time& /* time */,
   double v_max = 0.5; // Limit for Panda is 1.7 m/s
   double dt = period.toSec();
 
-  // get new state
-  // Eigen::Vector3d position_k = initial_transform.translation();
-  // Eigen::Matrix<double, 6, 1> velocity_k = jacobian * dq;
+  // measure covariance /////////////////
+  static Eigen::Matrix<double,6,1> state_km1 = state_k_;
+  static Eigen::Matrix<double,6,1> mu_k = Eigen::Matrix<double,6,1>::Zero();
+  static Eigen::Matrix<double,6,6> S_k = Eigen::Matrix<double, 6, 6>::Zero();
+  static k = 0;
+  Eigen::Vector3d position_k = initial_transform.translation() - pos_init_;
+  Eigen::Matrix<double,6,1> y_k << position_k(0), position_k(1), state_k_(2), state_k_(3),
+                        state_km1(4)+dt*(position_k(0)-1), state_km1(5) + dt*position_k(1);
+  S_k = k/(k+1)*S_k + (y_k-state_k_).transpose()*(y_k-state_k_);
+  mu_k = k/(k+1)*S_k + (y_k-state_k_);
+  std::cout << "k: " << k << "\n" << "S_k: " << S_k << "\n" << "mu_k: " << mu_k << std::endl;
+  k++;
+  ///////////////////////////////////////
 
-  // state_k_.segment<2>(0) = position_k.head<2>();
-  // state_k_.segment<2>(2) = velocity_k.head<2>();
+
 
   // Find discrete matrices - depending on period
   Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6 >::Identity(6,6) + A_*dt;
@@ -196,6 +201,7 @@ void LQRStepController::update(const ros::Time& /* time */,
 
   double v_x = state_new(2);
   double v_y = state_new(3);
+  state_km1 = state_k_;
   state_k_ = state_new;
 
   std::array<double, 6> command = {{v_x, v_y, 0.0, 0.0, 0.0, 0.0}};
