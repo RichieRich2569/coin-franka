@@ -121,13 +121,9 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
 void LQRStepController::starting(const ros::Time& /* time */) {
   elapsed_time_ = ros::Duration(0.0);
   franka::RobotState initial_state = state_handle_->getRobotState();
-  std::array<double, 42> jacobian_array =
-      model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
 
   // convert to eigen
   Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
-  Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data());
-  Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(initial_state.dq.data());
 
   // get initial state
   pos_init_ = initial_transform.translation();
@@ -148,12 +144,12 @@ void LQRStepController::starting(const ros::Time& /* time */) {
 void LQRStepController::update(const ros::Time& /* time */,
                                                 const ros::Duration& period) {
   elapsed_time_ += period;
-  //franka::RobotState robot_state = state_handle_->getRobotState();
+  franka::RobotState robot_state = state_handle_->getRobotState();
   //std::array<double, 42> jacobian_array =
   //    model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
 
   // convert to eigen
-  // Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
+  Eigen::Affine3d transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
   // Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data());
   // Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(robot_state.dq.data());
 
@@ -166,7 +162,7 @@ void LQRStepController::update(const ros::Time& /* time */,
   static Eigen::Matrix<double,6,1> mu_k = Eigen::Matrix<double,6,1>::Zero();
   static Eigen::Matrix<double,6,6> S_k = Eigen::Matrix<double, 6, 6>::Zero();
   static k = 0;
-  Eigen::Vector3d position_k = initial_transform.translation() - pos_init_;
+  Eigen::Vector3d position_k = transform.translation() - pos_init_;
   Eigen::Matrix<double,6,1> y_k << position_k(0), position_k(1), state_k_(2), state_k_(3),
                         state_km1(4)+dt*(position_k(0)-1), state_km1(5) + dt*position_k(1);
   S_k = k/(k+1)*S_k + (y_k-state_k_).transpose()*(y_k-state_k_);
@@ -183,7 +179,7 @@ void LQRStepController::update(const ros::Time& /* time */,
 
   // Find appropriate velocities
   Eigen::Matrix<double, 4, 1> u_k = - K_ * state_k_;
-  u_k(2) = 1; // Set reference
+  u_k(2) = 0.2; // Set reference
   Eigen::Matrix<double, 6, 1> state_new = A*state_k_ + B*u_k;
 
   // Velocity can only be changed by a maximum amount
@@ -195,8 +191,9 @@ void LQRStepController::update(const ros::Time& /* time */,
   if (elapsed_time_.toSec() < 1000) {
     // std::cout << "vx: " << round(1000*state_new(2))/1000 << " m/s, vy: " << round(1000*state_new(3))/1000 << " m/s." << std::endl;
     // std::cout << "delta v: " << sqrt(pow(state_new(0)-state_k_(0),2) + pow(state_new(1)-state_k_(1),2)) << std::endl;
-    std::cout << "x: " << round(1000*state_new(0))/1000 << " m, y: " << round(1000*state_new(1))/1000 << " m" << std::endl;
+    // std::cout << "x: " << round(1000*state_new(0))/1000 << " m, y: " << round(1000*state_new(1))/1000 << " m" << std::endl;
     // std::cout << "accel: " << sqrt(pow(state_new(0)-state_k_(0),2) + pow(state_new(1)-state_k_(1),2))/dt << std::endl;
+    std::cout << "x: " << round(1000*position_k(0))/1000 << " m, y: " << round(1000*position_k(1))/1000 << " m" << std::endl;
   }
 
   double v_x = state_new(2);
