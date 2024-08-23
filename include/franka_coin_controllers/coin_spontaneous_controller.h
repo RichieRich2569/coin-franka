@@ -16,7 +16,7 @@
 
 namespace franka_coin_controllers {
 
-class LQRStepController : public controller_interface::MultiInterfaceController<
+class COINSpontaneousController: public controller_interface::MultiInterfaceController<
                                                franka_hw::FrankaModelInterface,
                                                franka_hw::FrankaVelocityCartesianInterface,
                                                franka_hw::FrankaStateInterface> {
@@ -28,18 +28,23 @@ class LQRStepController : public controller_interface::MultiInterfaceController<
 
  private:
   // Ricatti Solver for LQR
-  void solveRicattiD(const Eigen::MatrixXd &Ad,
-                            const Eigen::MatrixXd &Bd, const Eigen::MatrixXd &Q,
+  void solveRicattiD(const Eigen::MatrixXd &A,
+                            const Eigen::MatrixXd &B, const Eigen::MatrixXd &Q,
                             const Eigen::MatrixXd &R, Eigen::MatrixXd &P,
                             const double &tolerance = 1.E-3,
                             const int iter_max = 1000,
-                            const bool &verbose = true);
+                            const bool &verbose = false);
+  // Loader for COIN estimates
+  bool loadCOINestimates(Eigen::Matrix<double, 340, 18> &A);
   
   franka_hw::FrankaVelocityCartesianInterface* velocity_cartesian_interface_;
   std::unique_ptr<franka_hw::FrankaCartesianVelocityHandle> velocity_cartesian_handle_;
   std::unique_ptr<franka_hw::FrankaStateHandle> state_handle_;
   std::unique_ptr<franka_hw::FrankaModelHandle> model_handle_;
   ros::Duration elapsed_time_;
+
+  const int g_steps_ = 300; // Time steps between new estimates of g - adaptation speed of model.
+  Eigen::Matrix<double, 18, 1> g_estimates_; // Vector containing estimates of g.
 
   Eigen::Matrix<double, 6, 1> state_k_; // Current state vector for LQR controller with Integral Control
   Eigen::Vector3d pos_init_; // Initial Position Vector - To remove bias

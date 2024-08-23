@@ -6,6 +6,11 @@ lqr_step_controller:
     type: franka_coin_controllers/LQRStepController
     arm_id: $(arg arm_id)
 
+coin_spontaneous_controller:
+    type: franka_coin_controllers/COINSpontaneousController
+    arm_id: $(arg arm_id)
+    trial_param: $(arg trial) 
+
 cartesian_velocity_example_controller:
     type: franka_coin_controllers/CartesianVelocityExampleController
     arm_id: $(arg arm_id)

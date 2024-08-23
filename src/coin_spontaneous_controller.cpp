@@ -1,11 +1,12 @@
 // Copyright (c) 2023 Franka Robotics GmbH
 // Use of this source code is governed by the Apache-2.0 license, see LICENSE
-#include <franka_coin_controllers/lqr_step_controller.h>
+#include <franka_coin_controllers/coin_spontaneous_controller.h>
 
 #include <array>
 #include <cmath>
 #include <memory>
 #include <string>
+#include <fstream>
 
 #include <controller_interface/controller_base.h>
 #include <hardware_interface/hardware_interface.h>
@@ -15,11 +16,11 @@
 
 namespace franka_coin_controllers {
 
-bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
+bool COINSpontaneousController::init(hardware_interface::RobotHW* robot_hardware,
                                               ros::NodeHandle& node_handle) {
   std::string arm_id;
   if (!node_handle.getParam("arm_id", arm_id)) {
-    ROS_ERROR("LQRStepController: Could not get parameter arm_id");
+    ROS_ERROR("COINSpontaneousController: Could not get parameter arm_id");
     return false;
   }
 
@@ -27,7 +28,7 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
       robot_hardware->get<franka_hw::FrankaVelocityCartesianInterface>();
   if (velocity_cartesian_interface_ == nullptr) {
     ROS_ERROR(
-        "LQRStepController: Could not get Cartesian velocity interface from "
+        "COINSpontaneousController: Could not get Cartesian velocity interface from "
         "hardware");
     return false;
   }
@@ -36,14 +37,14 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
         velocity_cartesian_interface_->getHandle(arm_id + "_robot"));
   } catch (const hardware_interface::HardwareInterfaceException& e) {
     ROS_ERROR_STREAM(
-        "LQRStepController: Exception getting Cartesian handle: " << e.what());
+        "COINSpontaneousController: Exception getting Cartesian handle: " << e.what());
     return false;
   }
 
   auto* model_interface = robot_hardware->get<franka_hw::FrankaModelInterface>();
   if (model_interface == nullptr) {
     ROS_ERROR_STREAM(
-        "LQRStepController: Error getting model interface from hardware");
+        "COINSpontaneousController: Error getting model interface from hardware");
     return false;
   }
   try {
@@ -51,14 +52,14 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
         model_interface->getHandle(arm_id + "_model"));
   } catch (hardware_interface::HardwareInterfaceException& ex) {
     ROS_ERROR_STREAM(
-        "LQRStepController: Exception getting model handle from interface: "
+        "COINSpontaneousController: Exception getting model handle from interface: "
         << ex.what());
     return false;
   }
 
   auto state_interface = robot_hardware->get<franka_hw::FrankaStateInterface>();
   if (state_interface == nullptr) {
-    ROS_ERROR("LQRStepController: Could not get state interface from hardware");
+    ROS_ERROR("COINSpontaneousController: Could not get state interface from hardware");
     return false;
   }
 
@@ -70,7 +71,7 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
     for (size_t i = 0; i < q_start.size(); i++) {
       if (std::abs(state_handle_->getRobotState().q_d[i] - q_start[i]) > 0.1) {
         ROS_ERROR_STREAM(
-            "LQRStepController: Robot is not in the expected starting position "
+            "COINSpontaneousController: Robot is not in the expected starting position "
             "for running this example. Run `roslaunch franka_coin_controllers "
             "coin_move_to_start.launch robot_ip:=<robot-ip> load_gripper:=<has-attached-gripper>` "
             "first.");
@@ -79,9 +80,28 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
     }
   } catch (const hardware_interface::HardwareInterfaceException& e) {
     ROS_ERROR_STREAM(
-        "LQRStepController: Exception getting state handle: " << e.what());
+        "COINSpontaneousController: Exception getting state handle: " << e.what());
     return false;
   }
+
+  // Obtain current trial
+  int trial_param;
+  // Retrieve the parameter value from the parameter server
+  if (!node_handle.getParam("trial_param", trial_param)) {
+      ROS_WARN("COINSpontaneousController: Parameter 'trial' not set. Using default value.");
+      trial_param = 1; // default value
+  }
+  ROS_INFO("Beginning Trial: %d", trial_param);
+
+  // Load coin values
+  Eigen::Matrix<double, 340, 18> G;
+  if (!loadCOINestimates(G)) {
+     ROS_ERROR("COINSpontaneousController: Could not load COIN values");
+  } else {
+    ROS_INFO("COIN Estimates successfully loaded from file");
+  }
+
+  g_estimates_ = G.row(trial_param-1);
 
   // Define state space matrices A, B (continuous) and LQR Q and R
   A_ << 0, 0, 1, 0, 0, 0,
@@ -127,7 +147,7 @@ bool LQRStepController::init(hardware_interface::RobotHW* robot_hardware,
   return true;
 }
 
-void LQRStepController::starting(const ros::Time& /* time */) {
+void COINSpontaneousController::starting(const ros::Time& /* time */) {
   elapsed_time_ = ros::Duration(0.0);
   franka::RobotState initial_state = state_handle_->getRobotState();
 
@@ -150,7 +170,7 @@ void LQRStepController::starting(const ros::Time& /* time */) {
 
 }
 
-void LQRStepController::update(const ros::Time& /* time */,
+void COINSpontaneousController::update(const ros::Time& /* time */,
                                                 const ros::Duration& period) {
   elapsed_time_ += period;
   franka::RobotState robot_state = state_handle_->getRobotState();
@@ -223,13 +243,13 @@ void LQRStepController::update(const ros::Time& /* time */,
   velocity_cartesian_handle_->setCommand(command);
 }
 
-void LQRStepController::stopping(const ros::Time& /*time*/) {
+void COINSpontaneousController::stopping(const ros::Time& /*time*/) {
   // WARNING: DO NOT SEND ZERO VELOCITIES HERE AS IN CASE OF ABORTING DURING MOTION
   // A JUMP TO ZERO WILL BE COMMANDED PUTTING HIGH LOADS ON THE ROBOT. LET THE DEFAULT
   // BUILT-IN STOPPING BEHAVIOR SLOW DOWN THE ROBOT.
 }
 
-void LQRStepController::solveRicattiD(const Eigen::MatrixXd &A,
+void COINSpontaneousController::solveRicattiD(const Eigen::MatrixXd &A,
                             const Eigen::MatrixXd &B, const Eigen::MatrixXd &Q,
                             const Eigen::MatrixXd &R, Eigen::MatrixXd &P,
                             const double &tolerance,
@@ -267,7 +287,25 @@ void LQRStepController::solveRicattiD(const Eigen::MatrixXd &A,
     }
 }
 
+bool COINSpontaneousController::loadCOINestimates(Eigen::Matrix<double, 340, 18> &A) {   
+    Eigen::MatrixXd matrix(1,340*18);
+
+    std::ifstream file("/home/richard/catkin_ws/src/coin-franka/coin/g_estimates.bin", std::ios::binary); // NOT a relative PATH
+    if (file.is_open()) {
+        file.read(reinterpret_cast<char*>(matrix.data()), sizeof(double) * 340 * 18);
+        file.close();
+    } else {
+        return false;
+    }
+
+    // Reshape matrix
+    Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> reshapedMatrix(matrix.data(), 340, 18);
+    A = reshapedMatrix;
+    
+    return true;
+}
+
 } // namespace franka_coin_controllers
 
-PLUGINLIB_EXPORT_CLASS(franka_coin_controllers::LQRStepController,
+PLUGINLIB_EXPORT_CLASS(franka_coin_controllers::COINSpontaneousController,
                        controller_interface::ControllerBase)
