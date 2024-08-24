@@ -84,16 +84,14 @@ bool COINSpontaneousController::init(hardware_interface::RobotHW* robot_hardware
     return false;
   }
 
-  // Obtain current trial
-  int trial_param;
   // Retrieve the parameter value from the parameter server
-  if (!node_handle.getParam("trial_param", trial_param)) {
+  if (!node_handle.getParam("trial_param", trial_param_)) {
       ROS_WARN("COINSpontaneousController: Parameter 'trial' not set. Using default value.");
-      trial_param = 1; // default value
+      trial_param_ = 1; // default value
   }
-  ROS_INFO("Beginning Trial: %d", trial_param);
+  ROS_INFO("Beginning Trial: %d", trial_param_);
 
-  // Load coin values
+  // Load coin values - all estimates are scaled by 15.
   Eigen::Matrix<double, 340, 18> G;
   if (!loadCOINestimates(G)) {
      ROS_ERROR("COINSpontaneousController: Could not load COIN values");
@@ -101,13 +99,23 @@ bool COINSpontaneousController::init(hardware_interface::RobotHW* robot_hardware
     ROS_INFO("COIN Estimates successfully loaded from file");
   }
 
-  g_estimates_ = G.row(trial_param-1);
+  g_estimates_ = G.row(trial_param_-1);
+
+  // Find value of g - FROM SPONTANEOUS RECOVERY PARADIGM
+  double g;
+  if (trial_param_ < 51) {
+    g = 0;
+  } else if (trial_param_ < 176) {
+    g = 1;
+  } else {
+    g = -1;
+  }
 
   // Define state space matrices A, B (continuous) and LQR Q and R
   A_ << 0, 0, 1, 0, 0, 0,
         0, 0, 0, 1, 0, 0,
-        0, 0, 0, -15, 0, 0,
-        0, 0, 15, 0, 0, 0,
+        0, 0, 0, -15*g, 0, 0,
+        0, 0, 15*g, 0, 0, 0,
         1, 0, 0, 0, 0, 0,
         0, 1, 0, 0, 0, 0;
 
@@ -129,26 +137,28 @@ bool COINSpontaneousController::init(hardware_interface::RobotHW* robot_hardware
   pos_init_.setZero();
   state_k_.setZero();
   K_.setZero();
+  data_.setZero();
   x_goal_ = 0.2; // Goal set to 0.2m in front of robot's initial pose.
 
   // K_ << 142.79, 33.06, 35.21, -1.18, 281.56, 38.82,
   //      -63.56, 77.98, -0.24, 33.94, -121.43, 89.92,
   //      0, 0, 0, 0, 0, 0,
   //      0, 0, 0, 0, 0, 0;
-  Eigen::MatrixXd P = Eigen::MatrixXd::Zero(A_.rows(),A_.cols());
-  Eigen::MatrixXd A = 0.001*A_ + Eigen::MatrixXd::Identity(A_.rows(),A_.cols());
-  Eigen::MatrixXd B = 0.001*B_;
+  // Eigen::MatrixXd P = Eigen::MatrixXd::Zero(A_.rows(),A_.cols());
+  // Eigen::MatrixXd A = 0.001*A_ + Eigen::MatrixXd::Identity(A_.rows(),A_.cols());
+  // Eigen::MatrixXd B = 0.001*B_;
 
-  solveRicattiD(A,B,Q_,R_,P);
+  // solveRicattiD(A,B,Q_,R_,P);
 
-  K_ = (R_.inverse() * B.transpose() * P);
-  K_.bottomRows(2).setZero();
+  // K_ = (R_.inverse() * B.transpose() * P);
+  // K_.bottomRows(2).setZero();
 
   return true;
 }
 
 void COINSpontaneousController::starting(const ros::Time& /* time */) {
   elapsed_time_ = ros::Duration(0.0);
+  discrete_t_ = 0;
   franka::RobotState initial_state = state_handle_->getRobotState();
 
   // convert to eigen
@@ -173,6 +183,13 @@ void COINSpontaneousController::starting(const ros::Time& /* time */) {
 void COINSpontaneousController::update(const ros::Time& /* time */,
                                                 const ros::Duration& period) {
   elapsed_time_ += period;
+  discrete_t_++;
+
+  // End running code if discrete_t_ greater than the nominal 5 s = 5000.
+  if (discrete_t_ > 5000) {
+    return;
+  }
+
   franka::RobotState robot_state = state_handle_->getRobotState();
   //std::array<double, 42> jacobian_array =
   //    model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
@@ -186,30 +203,17 @@ void COINSpontaneousController::update(const ros::Time& /* time */,
   double v_max = 0.5; // Limit for Panda is 1.7 m/s
   double dt = period.toSec();
 
+  // Update K_ every 300 time steps
+  if ((discrete_t_ % g_steps_) - 1 == 0) {
+    // Code for updating K_
+    double new_g = g_estimates_(discrete_t-1);
+    update_K_(new_g);
+  }
+
   // Measure true position of robot to update state.
   Eigen::Vector3d position_k = (transform.translation() - pos_init_)/x_goal_; // position scaled to controller model
   state_k_(0) = position_k(0);
   state_k_(1) = position_k(1);
-
-  // measure covariance /////////////////
-  // static Eigen::Matrix<double,6,1> state_km1 = state_k_;
-  // static Eigen::Matrix<double,6,1> mu_k = Eigen::Matrix<double,6,1>::Zero();
-  // static Eigen::Matrix<double,6,6> S_k = Eigen::Matrix<double, 6, 6>::Zero();
-  // static int k = 0;
-  // Eigen::Matrix<double,6,1> y_k; y_k << position_k(0), position_k(1), 
-  //                                       state_k_(2), state_k_(3),
-  //                                       state_km1(4)+dt*(position_k(0)-1), 
-  //                                       state_km1(5) + dt*position_k(1);
-  // Eigen::Matrix<double,6,6> VTV = (y_k-state_k_)*(y_k-state_k_).transpose();
-  // S_k = k/(k+1)*S_k + VTV;
-  // mu_k = k/(k+1)*mu_k + (y_k-state_k_);
-  // if (k < 1000) {
-  //   std::cout << "k: " << k << "\n" << "res_x: " << y_k(0) - state_k_(0) << ", res_y: " << y_k(1) - state_k_(1) << std::endl;
-  // }
-  // k++;
-  ///////////////////////////////////////
-
-
 
   // Find discrete matrices - depending on period
   Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6 >::Identity(6,6) + A_*dt;
@@ -239,6 +243,11 @@ void COINSpontaneousController::update(const ros::Time& /* time */,
   //state_km1 = state_k_;
   state_k_ = state_new;
 
+  // Update data
+  data_.row(discrete_t_) << elapsed_time_.toSec(), u_k(0), u_k(1), state_k_(0),
+                            state_k_(1), state_k_(2), state_k_(3), state_k_(4),
+                            state_k_(5);
+
   std::array<double, 6> command = {{v_x, v_y, 0.0, 0.0, 0.0, 0.0}}; 
   velocity_cartesian_handle_->setCommand(command);
 }
@@ -247,6 +256,31 @@ void COINSpontaneousController::stopping(const ros::Time& /*time*/) {
   // WARNING: DO NOT SEND ZERO VELOCITIES HERE AS IN CASE OF ABORTING DURING MOTION
   // A JUMP TO ZERO WILL BE COMMANDED PUTTING HIGH LOADS ON THE ROBOT. LET THE DEFAULT
   // BUILT-IN STOPPING BEHAVIOR SLOW DOWN THE ROBOT.
+
+  // Specify the directory where the files should be saved
+  std::string directory = "/home/richard/catkin_ws/src/coin-franka/coin/spontaneous_data/"; // Change this
+
+  // Create a dynamic file name based on the trial number
+  std::ostringstream filename;
+  filename << directory << "data" << trial_number << ".csv";
+
+  // Open the file with the dynamic name
+  std::ofstream file(filename.str());
+
+  // Write the matrix to the file
+  file << "t,fx,fy,x,y,x_dot,y_dot,wx,wy\n";  // Header
+
+  for (int i = 0; i < data_.rows(); ++i) {
+      file << std::fixed << std::setprecision(6) << data_(i, 0);  // Write time or first column with precision
+      for (int j = 1; j < data_.cols(); ++j) {
+          file << "," << data_(i, j);
+      }
+      file << "\n";
+  }
+
+  file.close();
+
+  std::cout << "Data saved successfully to state_data.csv" << std::endl;
 }
 
 void COINSpontaneousController::solveRicattiD(const Eigen::MatrixXd &A,
@@ -303,6 +337,28 @@ bool COINSpontaneousController::loadCOINestimates(Eigen::Matrix<double, 340, 18>
     A = reshapedMatrix;
     
     return true;
+}
+
+void COINSpontaneousController::update_K_(double g) {
+  // Define estimates of plant A
+  Eigen::Matrix<double, 6, 6> A <<  0, 0, 1, 0, 0, 0,
+                                    0, 0, 0, 1, 0, 0,
+                                    0, 0, 0, -g, 0, 0,
+                                    0, 0, g, 0, 0, 0,
+                                    1, 0, 0, 0, 0, 0,
+                                    0, 1, 0, 0, 0, 0;
+  
+  // Update controller
+  Eigen::MatrixXd P = Eigen::MatrixXd::Zero(A.rows(),A.cols());
+  Eigen::MatrixXd A = 0.001*A + Eigen::MatrixXd::Identity(A.rows(),A.cols());
+  Eigen::MatrixXd B = 0.001*B_;
+
+  solveRicattiD(A,B,Q_,R_,P);
+
+  // Calculate new K_
+  K_ = (R_.inverse() * B.transpose() * P);
+  K_.bottomRows(2).setZero();
+
 }
 
 } // namespace franka_coin_controllers

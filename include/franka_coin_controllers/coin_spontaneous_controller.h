@@ -36,13 +36,18 @@ class COINSpontaneousController: public controller_interface::MultiInterfaceCont
                             const bool &verbose = false);
   // Loader for COIN estimates
   bool loadCOINestimates(Eigen::Matrix<double, 340, 18> &A);
+
+  // Function for updating current controller estimate
+  void update_K_(double g);
   
   franka_hw::FrankaVelocityCartesianInterface* velocity_cartesian_interface_;
   std::unique_ptr<franka_hw::FrankaCartesianVelocityHandle> velocity_cartesian_handle_;
   std::unique_ptr<franka_hw::FrankaStateHandle> state_handle_;
   std::unique_ptr<franka_hw::FrankaModelHandle> model_handle_;
   ros::Duration elapsed_time_;
+  int discrete_t_; // Discrete time step
 
+  int trial_param;
   const int g_steps_ = 300; // Time steps between new estimates of g - adaptation speed of model.
   Eigen::Matrix<double, 18, 1> g_estimates_; // Vector containing estimates of g.
 
@@ -54,6 +59,8 @@ class COINSpontaneousController: public controller_interface::MultiInterfaceCont
   Eigen::Matrix<double, 6, 6> Q_; // Matrix Q in LQR design
   Eigen::Matrix<double, 4, 4> R_; // Matrix R in LQR design
   Eigen::Matrix<double, 4, 6> K_; // Optimum Matrix K such that u=Kx in LQR
+
+  Eigen::Matrix<double, 5000, 9> data_; // Data to be stored in file (elapsed_time, fk, xk)
 };
 
 }  // namespace franka_coin_controllers
