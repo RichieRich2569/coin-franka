@@ -7,6 +7,8 @@
 #include <memory>
 #include <string>
 #include <fstream>
+#include <cstdlib>
+
 
 #include <controller_interface/controller_base.h>
 #include <hardware_interface/hardware_interface.h>
@@ -137,7 +139,8 @@ bool COINSpontaneousController::init(hardware_interface::RobotHW* robot_hardware
   pos_init_.setZero();
   state_k_.setZero();
   K_.setZero();
-  data_.setZero();
+  data_.resize(5000, 9);  // Resize the matrix to 5000x9
+  data_.setZero();  // Initialize the matrix to zero
   x_goal_ = 0.2; // Goal set to 0.2m in front of robot's initial pose.
 
   // K_ << 142.79, 33.06, 35.21, -1.18, 281.56, 38.82,
@@ -152,6 +155,7 @@ bool COINSpontaneousController::init(hardware_interface::RobotHW* robot_hardware
 
   // K_ = (R_.inverse() * B.transpose() * P);
   // K_.bottomRows(2).setZero();
+  stop_flag_ = false;
 
   return true;
 }
@@ -180,13 +184,15 @@ void COINSpontaneousController::starting(const ros::Time& /* time */) {
 
 }
 
-void COINSpontaneousController::update(const ros::Time& /* time */,
+void COINSpontaneousController::update(const ros::Time& time,
                                                 const ros::Duration& period) {
   elapsed_time_ += period;
   discrete_t_++;
 
   // End running code if discrete_t_ greater than the nominal 5 s = 5000.
-  if (discrete_t_ > 5000) {
+  if (discrete_t_ > 4999) {
+    stop_flag_ = true;
+    stopRequest(time);
     return;
   }
 
@@ -200,13 +206,13 @@ void COINSpontaneousController::update(const ros::Time& /* time */,
   // Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(robot_state.dq.data());
 
   double time_max = 5.0;
-  double v_max = 0.5; // Limit for Panda is 1.7 m/s
+  double v_max = 1.5/x_goal_; // Limit for Panda is 1.7 m/s
   double dt = period.toSec();
 
   // Update K_ every 300 time steps
   if ((discrete_t_ % g_steps_) - 1 == 0) {
     // Code for updating K_
-    double new_g = g_estimates_(discrete_t-1);
+    double new_g = g_estimates_(floor(discrete_t_/g_steps_));
     update_K_(new_g);
   }
 
@@ -230,13 +236,13 @@ void COINSpontaneousController::update(const ros::Time& /* time */,
   // state_new = state_k_ + (state_new - state_k_)*0.0001;
 
   // For now just output given velocities - Adapt this in the command below
-  if (elapsed_time_.toSec() < 1000) {
-    // std::cout << "vx: " << round(1000*state_new(2))/1000 << " m/s, vy: " << round(1000*state_new(3))/1000 << " m/s." << std::endl;
-    // std::cout << "delta v: " << sqrt(pow(state_new(0)-state_k_(0),2) + pow(state_new(1)-state_k_(1),2)) << std::endl;
-    // std::cout << "x: " << round(1000*state_new(0))/1000 << " m, y: " << round(1000*state_new(1))/1000 << " m" << std::endl;
-    // std::cout << "accel: " << sqrt(pow(state_new(0)-state_k_(0),2) + pow(state_new(1)-state_k_(1),2))/dt << std::endl;
-    // std::cout << "x: " << round(1000*position_k(0))/1000 << " m, y: " << round(1000*position_k(1))/1000 << " m" << std::endl;
-  }
+  // if (elapsed_time_.toSec() < 1000) {
+  //   // std::cout << "vx: " << round(1000*state_new(2))/1000 << " m/s, vy: " << round(1000*state_new(3))/1000 << " m/s." << std::endl;
+  //   // std::cout << "delta v: " << sqrt(pow(state_new(0)-state_k_(0),2) + pow(state_new(1)-state_k_(1),2)) << std::endl;
+  //   // std::cout << "x: " << round(1000*state_new(0))/1000 << " m, y: " << round(1000*state_new(1))/1000 << " m" << std::endl;
+  //   // std::cout << "accel: " << sqrt(pow(state_new(0)-state_k_(0),2) + pow(state_new(1)-state_k_(1),2))/dt << std::endl;
+  //   // std::cout << "x: " << round(1000*position_k(0))/1000 << " m, y: " << round(1000*position_k(1))/1000 << " m" << std::endl;
+  // }
 
   double v_x = x_goal_*state_new(2); // Scale is adjusted (unit step in control, x_goal_ in front of robot.)
   double v_y = x_goal_*state_new(3);
@@ -244,9 +250,9 @@ void COINSpontaneousController::update(const ros::Time& /* time */,
   state_k_ = state_new;
 
   // Update data
-  data_.row(discrete_t_) << elapsed_time_.toSec(), u_k(0), u_k(1), state_k_(0),
-                            state_k_(1), state_k_(2), state_k_(3), state_k_(4),
-                            state_k_(5);
+  data_.row(discrete_t_) << elapsed_time_.toSec(), u_k(0), u_k(1), state_new(0),
+                            state_new(1), state_new(2), state_new(3), state_new(4),
+                            state_new(5);
 
   std::array<double, 6> command = {{v_x, v_y, 0.0, 0.0, 0.0, 0.0}}; 
   velocity_cartesian_handle_->setCommand(command);
@@ -256,13 +262,16 @@ void COINSpontaneousController::stopping(const ros::Time& /*time*/) {
   // WARNING: DO NOT SEND ZERO VELOCITIES HERE AS IN CASE OF ABORTING DURING MOTION
   // A JUMP TO ZERO WILL BE COMMANDED PUTTING HIGH LOADS ON THE ROBOT. LET THE DEFAULT
   // BUILT-IN STOPPING BEHAVIOR SLOW DOWN THE ROBOT.
+  if (!stop_flag_) {
+    return;
+  }
 
   // Specify the directory where the files should be saved
-  std::string directory = "/home/richard/catkin_ws/src/coin-franka/coin/spontaneous_data/"; // Change this
+  std::string directory = "/home/richard/catkin_ws/src/coin-franka/coin/spontaneous_data/";
 
   // Create a dynamic file name based on the trial number
   std::ostringstream filename;
-  filename << directory << "data" << trial_number << ".csv";
+  filename << directory << "data" << trial_param_ << ".csv";
 
   // Open the file with the dynamic name
   std::ofstream file(filename.str());
@@ -280,7 +289,8 @@ void COINSpontaneousController::stopping(const ros::Time& /*time*/) {
 
   file.close();
 
-  std::cout << "Data saved successfully to state_data.csv" << std::endl;
+  ROS_INFO("Data saved successfully to data%d.csv", trial_param_);
+  int resCode = system("killall -9 rosmaster && killall -9    rosout");
 }
 
 void COINSpontaneousController::solveRicattiD(const Eigen::MatrixXd &A,
@@ -341,16 +351,17 @@ bool COINSpontaneousController::loadCOINestimates(Eigen::Matrix<double, 340, 18>
 
 void COINSpontaneousController::update_K_(double g) {
   // Define estimates of plant A
-  Eigen::Matrix<double, 6, 6> A <<  0, 0, 1, 0, 0, 0,
-                                    0, 0, 0, 1, 0, 0,
-                                    0, 0, 0, -g, 0, 0,
-                                    0, 0, g, 0, 0, 0,
-                                    1, 0, 0, 0, 0, 0,
-                                    0, 1, 0, 0, 0, 0;
+  Eigen::Matrix<double, 6, 6> A;
+  A <<  0, 0, 1, 0, 0, 0,
+        0, 0, 0, 1, 0, 0,
+        0, 0, 0, -g, 0, 0,
+        0, 0, g, 0, 0, 0,
+        1, 0, 0, 0, 0, 0,
+        0, 1, 0, 0, 0, 0;
   
   // Update controller
   Eigen::MatrixXd P = Eigen::MatrixXd::Zero(A.rows(),A.cols());
-  Eigen::MatrixXd A = 0.001*A + Eigen::MatrixXd::Identity(A.rows(),A.cols());
+  A = 0.001*A + Eigen::MatrixXd::Identity(A.rows(),A.cols());
   Eigen::MatrixXd B = 0.001*B_;
 
   solveRicattiD(A,B,Q_,R_,P);

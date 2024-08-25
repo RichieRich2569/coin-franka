@@ -2,7 +2,6 @@
 <launch>
   <arg name="robot" default="panda" doc="choose your robot. Possible values: [panda, fr3]"/>
   <arg name="arm_id" default="$(arg robot)" />
-  <arg name="trial" default="1" />
   <include file="$(find franka_control)/launch/franka_control.launch" pass_all_args="true"/>
   <rosparam command="load" file="$(find franka_coin_controllers)/config/franka_coin_controllers.yaml" subst_value="true" />
   <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen"  args="coin_spontaneous_controller"/>

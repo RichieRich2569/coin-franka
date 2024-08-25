@@ -47,7 +47,7 @@ class COINSpontaneousController: public controller_interface::MultiInterfaceCont
   ros::Duration elapsed_time_;
   int discrete_t_; // Discrete time step
 
-  int trial_param;
+  int trial_param_;
   const int g_steps_ = 300; // Time steps between new estimates of g - adaptation speed of model.
   Eigen::Matrix<double, 18, 1> g_estimates_; // Vector containing estimates of g.
 
@@ -60,7 +60,8 @@ class COINSpontaneousController: public controller_interface::MultiInterfaceCont
   Eigen::Matrix<double, 4, 4> R_; // Matrix R in LQR design
   Eigen::Matrix<double, 4, 6> K_; // Optimum Matrix K such that u=Kx in LQR
 
-  Eigen::Matrix<double, 5000, 9> data_; // Data to be stored in file (elapsed_time, fk, xk)
+  Eigen::MatrixXd data_; // Data to be stored in file (elapsed_time, fk, xk)
+  bool stop_flag_;
 };
 
 }  // namespace franka_coin_controllers
