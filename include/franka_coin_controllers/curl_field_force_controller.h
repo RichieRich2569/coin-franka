@@ -16,7 +16,7 @@
 #include <ros/time.h>
 #include <Eigen/Dense>
 
-#include <franka_coin_controllers/compliance_paramConfig.h>
+#include <franka_example_controllers/compliance_paramConfig.h>
 #include <franka_hw/franka_model_interface.h>
 #include <franka_hw/franka_state_interface.h>
 
@@ -45,8 +45,8 @@ class CurlFieldForceController : public controller_interface::MultiInterfaceCont
   double nullspace_stiffness_{20.0};
   double g_{1.0};
   const double delta_tau_max_{1.0};
-  const Eigen::Matrix<double, 6, 6> A_{{0, -1},
-                                       {1, 0}};
+  Eigen::Vector3d position_d_;
+  Eigen::Matrix<double, 6, 6> A_;
   Eigen::Matrix<double, 7, 1> q_d_nullspace_;
 };
 

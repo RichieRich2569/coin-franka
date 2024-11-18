@@ -16,7 +16,7 @@
 #include <ros/time.h>
 #include <Eigen/Dense>
 
-#include <franka_coin_controllers/compliance_paramConfig.h>
+#include <franka_example_controllers/compliance_paramConfig.h>
 #include <franka_hw/franka_model_interface.h>
 #include <franka_hw/franka_state_interface.h>
 
@@ -57,10 +57,10 @@ class CartesianImpedanceExampleController : public controller_interface::MultiIn
   Eigen::Quaterniond orientation_d_target_;
 
   // Dynamic reconfigure
-  std::unique_ptr<dynamic_reconfigure::Server<franka_coin_controllers::compliance_paramConfig>>
+  std::unique_ptr<dynamic_reconfigure::Server<franka_example_controllers::compliance_paramConfig>>
       dynamic_server_compliance_param_;
   ros::NodeHandle dynamic_reconfigure_compliance_param_node_;
-  void complianceParamCallback(franka_coin_controllers::compliance_paramConfig& config,
+  void complianceParamCallback(franka_example_controllers::compliance_paramConfig& config,
                                uint32_t level);
 
   // Equilibrium pose subscriber

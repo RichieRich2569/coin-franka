@@ -78,6 +78,11 @@ bool CurlFieldForceController::init(hardware_interface::RobotHW* robot_hw,
     }
   }
 
+  // Set A_ matrix values
+  A_ = Eigen::Matrix<double, 6, 6>::Zero();
+  A_.block<2, 2>(0, 0) << 0, -1,
+                          1, 0;
+
   return true;
 }
 
@@ -92,6 +97,8 @@ void CurlFieldForceController::starting(const ros::Time& /*time*/) {
   Eigen::Map<Eigen::Matrix<double, 7, 1>> q_initial(initial_state.q.data());
   Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
 
+  // Set initial position
+  position_d_ = initial_transform.translation();
   // set nullspace equilibrium configuration to initial q
   q_d_nullspace_ = q_initial;
 }
@@ -116,11 +123,16 @@ void CurlFieldForceController::update(const ros::Time& /*time*/,
   Eigen::Quaterniond orientation(transform.rotation());
 
   // compute current velocity
-  Eigen::Matrix<double, 3, 1> velocity = jacobian * dq;
+  Eigen::Matrix<double, 6, 1> velocity = jacobian * dq;
 
   // compute control
   // allocate variables
-  Eigen::VectorXd tau_task(7), tau_nullspace(7), tau_d(7);
+  Eigen::VectorXd tau_task(7), tau_vertical(7), tau_nullspace(7), tau_d(7);
+  Eigen::VectorXd tau_test(7);
+
+  Eigen::Matrix<double, 6, 1> input_force = Eigen::Matrix<double, 6, 1>::Zero();
+  input_force(0) = 1;
+  tau_test << jacobian.transpose()* input_force;
 
   // pseudoinverse for nullspace handling
   // kinematic pseuoinverse
@@ -130,6 +142,16 @@ void CurlFieldForceController::update(const ros::Time& /*time*/,
   // Apply torque depending on end-effector velocity
   tau_task << jacobian.transpose() *
                   (g_ * A_ * velocity);
+
+  // PD control on z-direction with strong stiffness, damping ratio = 1
+  double vertical_stiffness = 1000;
+  Eigen::Matrix<double, 6, 1> error = Eigen::Matrix<double, 6, 1>::Zero();
+  error(2) = position(2) - position_d_(2);
+  Eigen::Matrix<double, 6, 1> error_v = Eigen::Matrix<double, 6, 1>::Zero();
+  error_v(2) = velocity(2);
+
+  tau_vertical << jacobian.transpose() *
+                  (-vertical_stiffness * error - 2.0 * sqrt(vertical_stiffness) * error_v);
   
   // nullspace PD control with damping ratio = 1
   tau_nullspace << (Eigen::MatrixXd::Identity(7, 7) -
@@ -137,7 +159,7 @@ void CurlFieldForceController::update(const ros::Time& /*time*/,
                        (nullspace_stiffness_ * (q_d_nullspace_ - q) -
                         (2.0 * sqrt(nullspace_stiffness_)) * dq);
   // Desired torque
-  tau_d << tau_task + tau_nullspace + coriolis;
+  tau_d << tau_task + tau_nullspace + coriolis + tau_test + tau_vertical;
   // Saturate torque rate to avoid discontinuities
   tau_d << saturateTorqueRate(tau_d, tau_J_d);
   for (size_t i = 0; i < 7; ++i) {
