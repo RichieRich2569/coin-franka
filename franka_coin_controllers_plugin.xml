@@ -14,6 +14,11 @@
       A controller that renders a spring damper system in cartesian space. Compliance parameters and the equilibrium pose can be modified online with dynamic reconfigure and an interactive marker respectively.
     </description>
   </class>
+  <class name="franka_coin_controllers/CurlForceFieldController" type="franka_coin_controllers::CurlForceFieldController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      A controller that renders a curl force controller dependent on the cartesian velocity of the end-effector.
+    </description>
+  </class>
   <class name="franka_coin_controllers/ForceExampleController" type="franka_coin_controllers::ForceExampleController" base_class_type="controller_interface::ControllerBase">
     <description>
       A PI controller that applies a force corresponding to a user-provided desired mass in the z axis. The desired mass value can be modified online with dynamic reconfigure.

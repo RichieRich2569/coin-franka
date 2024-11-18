@@ -38,3 +38,15 @@ cartesian_impedance_example_controller:
         - $(arg arm_id)_joint5
         - $(arg arm_id)_joint6
         - $(arg arm_id)_joint7
+
+curl_field_force_controller:
+    type: franka_coin_controllers/CurlFieldForceController
+    arm_id: $(arg arm_id)
+    joint_names:
+        - $(arg arm_id)_joint1
+        - $(arg arm_id)_joint2
+        - $(arg arm_id)_joint3
+        - $(arg arm_id)_joint4
+        - $(arg arm_id)_joint5
+        - $(arg arm_id)_joint6
+        - $(arg arm_id)_joint7

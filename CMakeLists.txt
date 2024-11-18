@@ -75,6 +75,7 @@ add_library(franka_coin_controllers
   src/force_example_controller.cpp
   src/lqr_step_controller.cpp
   src/coin_spontaneous_controller.cpp
+  src/curl_force_field_controller.cpp
 )
 
 add_dependencies(franka_coin_controllers
