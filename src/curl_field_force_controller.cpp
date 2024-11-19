@@ -87,29 +87,29 @@ bool CurlFieldForceController::init(hardware_interface::RobotHW* robot_hw,
 }
 
 void CurlFieldForceController::starting(const ros::Time& /*time*/) {
-  // compute initial velocity with jacobian and set x_attractor and q_d_nullspace
-  // to initial configuration
-  franka::RobotState initial_state = state_handle_->getRobotState();
-  // get jacobian
-  std::array<double, 42> jacobian_array =
-      model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
-  // convert to eigen
-  Eigen::Map<Eigen::Matrix<double, 7, 1>> q_initial(initial_state.q.data());
-  Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
+  franka::RobotState robot_state = state_handle_->getRobotState();
+  std::array<double, 7> gravity_array = model_handle_->getGravity();
+  Eigen::Map<Eigen::Matrix<double, 7, 1>> tau_measured(robot_state.tau_J.data());
+  Eigen::Map<Eigen::Matrix<double, 7, 1>> gravity(gravity_array.data());
+  Eigen::Affine3d transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
+  Eigen::Vector3d position(transform.translation());
 
-  // Set initial position
-  position_d_ = initial_transform.translation();
-  // set nullspace equilibrium configuration to initial q
-  q_d_nullspace_ = q_initial;
+  // Initial position
+  init_position_ = position;
+
+  // Bias correction for the current external torque
+  tau_ext_initial_ = tau_measured - gravity;
+  tau_error_.setZero();
 }
 
 void CurlFieldForceController::update(const ros::Time& /*time*/,
-                                                 const ros::Duration& /*period*/) {
+                                                 const ros::Duration& period) {
   // get state variables
   franka::RobotState robot_state = state_handle_->getRobotState();
   std::array<double, 7> coriolis_array = model_handle_->getCoriolis();
   std::array<double, 42> jacobian_array =
       model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
+  std::array<double, 7> gravity_array = model_handle_->getGravity();
 
   // convert to Eigen
   Eigen::Map<Eigen::Matrix<double, 7, 1>> coriolis(coriolis_array.data());
@@ -118,6 +118,8 @@ void CurlFieldForceController::update(const ros::Time& /*time*/,
   Eigen::Map<Eigen::Matrix<double, 7, 1>> dq(robot_state.dq.data());
   Eigen::Map<Eigen::Matrix<double, 7, 1>> tau_J_d(  // NOLINT (readability-identifier-naming)
       robot_state.tau_J_d.data());
+  Eigen::Map<Eigen::Matrix<double, 7, 1>> tau_measured(robot_state.tau_J.data());
+  Eigen::Map<Eigen::Matrix<double, 7, 1>> gravity(gravity_array.data());
   Eigen::Affine3d transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
   Eigen::Vector3d position(transform.translation());
   Eigen::Quaterniond orientation(transform.rotation());
@@ -125,45 +127,25 @@ void CurlFieldForceController::update(const ros::Time& /*time*/,
   // compute current velocity
   Eigen::Matrix<double, 6, 1> velocity = jacobian * dq;
 
-  // compute control
-  // allocate variables
-  Eigen::VectorXd tau_task(7), tau_vertical(7), tau_nullspace(7), tau_d(7);
-  Eigen::VectorXd tau_test(7);
+  Eigen::Matrix<double, 7, 1> tau_d, tau_cmd, tau_ext;
+  Eigen::Matrix<double, 6, 1> desired_force_torque;
+  desired_force_torque.setZero();
 
-  Eigen::Matrix<double, 6, 1> input_force = Eigen::Matrix<double, 6, 1>::Zero();
-  input_force(0) = 1;
-  tau_test << jacobian.transpose()* input_force;
+  // Curl force field
+  desired_force_torque = g_ * A_ * velocity;
 
-  // pseudoinverse for nullspace handling
-  // kinematic pseuoinverse
-  Eigen::MatrixXd jacobian_transpose_pinv;
-  pseudoInverse(jacobian.transpose(), jacobian_transpose_pinv);
+  // PD Control to restrain vertical axis
+  desired_force_torque(2) = -k_p_ * (position(2)-init_position_(2)) - k_d_ * velocity(2);
+  std::cout << desired_force_torque << std::endl;
+  tau_ext = tau_measured - gravity - tau_ext_initial_ - coriolis;
+  tau_d = jacobian.transpose() * desired_force_torque;
+  tau_error_ = tau_error_ + period.toSec() * (tau_d - tau_ext);
+  // FF + PI control (PI gains are initially all 0)
+  tau_cmd = tau_d + k_p_ * (tau_d - tau_ext) + k_i_ * tau_error_;
+  tau_cmd = saturateTorqueRate(tau_cmd, tau_J_d);
 
-  // Apply torque depending on end-effector velocity
-  tau_task << jacobian.transpose() *
-                  (g_ * A_ * velocity);
-
-  // PD control on z-direction with strong stiffness, damping ratio = 1
-  double vertical_stiffness = 1000;
-  Eigen::Matrix<double, 6, 1> error = Eigen::Matrix<double, 6, 1>::Zero();
-  error(2) = position(2) - position_d_(2);
-  Eigen::Matrix<double, 6, 1> error_v = Eigen::Matrix<double, 6, 1>::Zero();
-  error_v(2) = velocity(2);
-
-  tau_vertical << jacobian.transpose() *
-                  (-vertical_stiffness * error - 2.0 * sqrt(vertical_stiffness) * error_v);
-  
-  // nullspace PD control with damping ratio = 1
-  tau_nullspace << (Eigen::MatrixXd::Identity(7, 7) -
-                    jacobian.transpose() * jacobian_transpose_pinv) *
-                       (nullspace_stiffness_ * (q_d_nullspace_ - q) -
-                        (2.0 * sqrt(nullspace_stiffness_)) * dq);
-  // Desired torque
-  tau_d << tau_task + tau_nullspace + coriolis + tau_test + tau_vertical;
-  // Saturate torque rate to avoid discontinuities
-  tau_d << saturateTorqueRate(tau_d, tau_J_d);
   for (size_t i = 0; i < 7; ++i) {
-    joint_handles_[i].setCommand(tau_d(i));
+    joint_handles_[i].setCommand(tau_cmd(i));
   }
 }
 
