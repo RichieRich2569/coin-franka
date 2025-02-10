@@ -41,14 +41,15 @@ class CurlFieldForceController : public controller_interface::MultiInterfaceCont
   std::unique_ptr<franka_hw::FrankaModelHandle> model_handle_;
   std::vector<hardware_interface::JointHandle> joint_handles_;
 
-  double g_{3.0};
-  double k_p_{1.0};
-  double k_i_{1.0};
-  double k_d_{1.0};
+  double g_{100.0};
+  double k_p_{200.0};
+  double k_i_{0.0};
+  double k_d_{28.0};
   const double delta_tau_max_{1.0};
   Eigen::Matrix<double, 6, 6> A_;
   Eigen::Matrix<double, 7, 1> tau_ext_initial_;
   Eigen::Matrix<double, 7, 1> tau_error_;
+  Eigen::Matrix<double, 7, 1> q_d_nullspace_;
   Eigen::Vector3d init_position_;
 };
 
