@@ -131,33 +131,22 @@ void CurlFieldForceController::update(const ros::Time& /*time*/,
   // compute current velocity
   Eigen::Matrix<double, 6, 1> velocity = jacobian * dq;
 
-  Eigen::Matrix<double, 7, 1> tau_d, tau_cmd, tau_ext, tau_nullspace;
+  Eigen::Matrix<double, 7, 1> tau_d, tau_cmd, tau_ext, tau_z;
   Eigen::Matrix<double, 6, 1> desired_force_torque;
   desired_force_torque.setZero();
+  tau_z.setZero();
 
   // Curl force field
   desired_force_torque = g_ * A_ * velocity;
-  // desired_force_torque.head(3) = -k_p_ * (position - init_position_) - k_d_ * velocity.head(3);
-
-  // pseudoinverse for nullspace handling
-  // kinematic pseuoinverse
-  Eigen::MatrixXd jacobian_transpose_pinv;
-  pseudoInverse(jacobian.transpose(), jacobian_transpose_pinv);
-  tau_nullspace << (Eigen::MatrixXd::Identity(7, 7) -
-                  jacobian.transpose() * jacobian_transpose_pinv) *
-                      (1 * (q_d_nullspace_ - q) -
-                      (2.0 * sqrt(1)) * dq);
-  //tau_cmd = tau_d + tau_nullspace + coriolis;
-
-  // PD Control to restrain vertical axis
-  desired_force_torque(2) = -k_p_ * (position(2)-init_position_(2)) - k_d_ * velocity(2);
-  std::cout << desired_force_torque << std::endl;
-  tau_ext = tau_measured - tau_ext_initial_ - coriolis - tau_nullspace - gravity;
+  
+  // PID control to fix motion in plane
+  desired_force_torque(2) = -k_p_ * (position(2)-init_position_(2)) - k_d_ * velocity(2); 
+ 
+  tau_ext = tau_measured - gravity - tau_ext_initial_;
   tau_d = jacobian.transpose() * desired_force_torque;
   tau_error_ = tau_error_ + period.toSec() * (tau_d - tau_ext);
-
-  // FF + PI control - Match actual torque to desired (force control through feedback)
-  tau_cmd = tau_d + tau_nullspace + coriolis;
+  // FF + PI control (PI gains are initially all 0)
+  tau_cmd = tau_d + k_p_ * (tau_d - tau_ext) + k_i_ * tau_error_;
   tau_cmd = saturateTorqueRate(tau_cmd, tau_J_d);
 
   for (size_t i = 0; i < 7; ++i) {
