@@ -80,8 +80,8 @@ bool CurlFieldForceController::init(hardware_interface::RobotHW* robot_hw,
 
   // Set A_ matrix values
   A_ = Eigen::Matrix<double, 6, 6>::Zero();
-  A_.block<2, 2>(0, 0) << 0, -1,
-                          1, 0;
+  A_.block<2, 2>(0, 0) << -1, 0,
+                          0, -1;
 
   return true;
 }
@@ -137,10 +137,10 @@ void CurlFieldForceController::update(const ros::Time& /*time*/,
   tau_z.setZero();
 
   // Curl force field
-  desired_force_torque = g_ * A_ * velocity;
+  desired_force_torque = g_ * A_ * (position.head(2) - init_position_.head(2));
   
   // PID control to fix motion in plane
-  desired_force_torque(2) = -k_p_ * (position(2)-init_position_(2)) - k_d_ * velocity(2); 
+  desired_force_torque(2) = -200 * (position(2)-init_position_(2)) - 20 * velocity(2); 
  
   tau_ext = tau_measured - gravity - tau_ext_initial_;
   tau_d = jacobian.transpose() * desired_force_torque;
