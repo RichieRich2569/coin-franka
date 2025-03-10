@@ -80,8 +80,8 @@ bool CurlFieldForceController::init(hardware_interface::RobotHW* robot_hw,
 
   // Set A_ matrix values
   A_ = Eigen::Matrix<double, 6, 6>::Zero();
-  A_.block<2, 2>(0, 0) << -1, 0,
-                          0, -1;
+  A_.block<2, 2>(0, 0) << 0, 1,
+                          -1, 0;
 
   return true;
 }
@@ -131,22 +131,24 @@ void CurlFieldForceController::update(const ros::Time& /*time*/,
   // compute current velocity
   Eigen::Matrix<double, 6, 1> velocity = jacobian * dq;
 
-  Eigen::Matrix<double, 7, 1> tau_d, tau_cmd, tau_ext, tau_z;
-  Eigen::Matrix<double, 6, 1> desired_force_torque;
+  Eigen::Matrix<double, 7, 1> tau_d, tau_cmd, tau_ext, tau_plane;
+  Eigen::Matrix<double, 6, 1> desired_force_torque, planar_force;
   desired_force_torque.setZero();
-  tau_z.setZero();
+  tau_plane.setZero();
+  planar_force.setZero();
 
   // Curl force field
-  desired_force_torque = g_ * A_ * (position.head(2) - init_position_.head(2));
+  desired_force_torque = g_ * A_ * velocity;
   
   // PID control to fix motion in plane
-  desired_force_torque(2) = -200 * (position(2)-init_position_(2)) - 20 * velocity(2); 
+  planar_force(2) = -400 * (position(2)-init_position_(2)) - 30 * velocity(2);
+  tau_plane = jacobian.transpose() * planar_force;
  
-  tau_ext = tau_measured - gravity - tau_ext_initial_;
+  tau_ext = tau_measured - gravity - tau_ext_initial_ - tau_plane;
   tau_d = jacobian.transpose() * desired_force_torque;
   tau_error_ = tau_error_ + period.toSec() * (tau_d - tau_ext);
   // FF + PI control (PI gains are initially all 0)
-  tau_cmd = tau_d + k_p_ * (tau_d - tau_ext) + k_i_ * tau_error_;
+  tau_cmd = tau_d + k_p_ * (tau_d - tau_ext) + k_i_ * tau_error_ + tau_plane;     
   tau_cmd = saturateTorqueRate(tau_cmd, tau_J_d);
 
   for (size_t i = 0; i < 7; ++i) {

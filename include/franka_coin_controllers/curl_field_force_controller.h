@@ -41,9 +41,9 @@ class CurlFieldForceController : public controller_interface::MultiInterfaceCont
   std::unique_ptr<franka_hw::FrankaModelHandle> model_handle_;
   std::vector<hardware_interface::JointHandle> joint_handles_;
 
-  double g_{1.0};
-  double k_p_{0.3};
-  double k_i_{0.0};
+  double g_{10.0};
+  double k_p_{0.5};
+  double k_i_{0.2};
   const double delta_tau_max_{1.0};
   double target_k_p_{0.0};
   double target_k_i_{0.0};
